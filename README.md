@@ -13,11 +13,8 @@ Traditional rate limiters treat all traffic as equal. In practice, abuse is cont
 
 ## 🏗️ System Architecture
 
-The gateway performs real-time admission control while offloading heavy reasoning to an out-of-band process.
+<img width="476" height="1020" alt="image" src="https://github.com/user-attachments/assets/fcf2d951-32fd-4ba0-8cff-1c9b2a8d84c6" />
 
-1. **Admission Control (Hot Path):** High-performance check against local and distributed counters.
-2. **Access Logging (Async):** Non-blocking emission of request metadata for every event.
-3. **Risk Engine (Out-of-Band):** Consumes logs to identify patterns (e.g., credential stuffing, scraping) and updates enforcement policies dynamically.
 
 ---
 
