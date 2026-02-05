@@ -16,6 +16,17 @@ Traditional rate limiters treat all traffic as equal. In practice, abuse is cont
 
 
 **High-level Architecture Diagram for MVP scope of Ankylosaurus middleware** 
+| Part                    | What it contains                              | Why it might matter for your middleware                          |
+| ----------------------- | --------------------------------------------- | ---------------------------------------------------------------- |
+| **IP / Remote address** | The client’s source IP                        | Detect high frequency, multiple clients from same IP             |
+| **HTTP Method**         | GET, POST, PUT, DELETE                        | Different endpoints can have different abuse patterns            |
+| **Path / Endpoint**     | `/login`, `/search`                           | Identify which action is being attempted                         |
+| **Query parameters**    | `?q=shoes`                                    | Optional — sometimes needed to detect scraping patterns          |
+| **Headers**             | User-Agent, Authorization, Content-Type, etc. | Detect bots, validate API keys, geo info                         |
+| **Body / Payload**      | JSON, form data                               | For later: maybe analyze failed login attempts, fraudulent input |
+| **Cookies**             | Session IDs, tokens                           | Optional for tracking user sessions                              |
+| **Timestamp**           | Request arrival time                          | Needed for sliding window / rate limiting                        |
+| **Protocol info**       | HTTP version, TLS info                        | Optional for advanced security signals                           |
 
 
 ---
