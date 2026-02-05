@@ -28,6 +28,7 @@ Traditional rate limiters treat all traffic as equal. In practice, abuse is cont
 | **Timestamp**           | Request arrival time                          | Needed for sliding window / rate limiting                        |
 | **Protocol info**       | HTTP version, TLS info                        | Optional for advanced security signals                           |
 
+HTTP Requests all contain information like this, which can all be subject to the middleware to assess.
 
 ---
 
