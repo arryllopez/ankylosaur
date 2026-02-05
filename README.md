@@ -1,5 +1,5 @@
 # ankylosaur 🦖 
-### **Abuse-Aware API Gateway**
+### **Abuse-Aware API Gateway (Currently only supporting the Gin framework :p)**
 
 `ankylosaur` is a specialized request admission controller designed to distinguish between legitimate users and sophisticated abusers. Unlike traditional rate limiters that rely on static numeric thresholds, `ankylosaur` adapts its enforcement based on endpoint context, historical behavior, and probabilistic risk signals.
 
