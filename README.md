@@ -31,9 +31,16 @@ Request → Extract Identity (IP / API Key)
 ```
 
 ## More about the algorithms
+*Diagrams adapted from ByteByteGo* 
 
 At its core, the token bucket algorithm looks like: 
 <img width="1069" height="610" alt="image" src="https://github.com/user-attachments/assets/6c174ee5-b826-475e-ab60-16f3d8ea0b6c" />
+
+The sliding window algorithm looks like this: 
+<img width="846" height="349" alt="image" src="https://github.com/user-attachments/assets/2d8bf29e-fa44-4cfd-b249-a8c4e92da779" />
+
+
+
 
 
 ## Rate Limiting
