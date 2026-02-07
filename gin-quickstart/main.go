@@ -81,16 +81,28 @@ func (tb *TokenBucket) StopRefiller() {
 // implementing custom middleware
 // this Logging middleware will be where the algorithm that has rate limiting via token bucket algo
 func Logger() gin.HandlerFunc {
-	tb := NewTokenBucket(10, 1, time.Second) // capacity 10, refill 1 token per second
+	var bucketPerIp sync.Map
 
 	return func(c *gin.Context) {
-		if allowed := tb.TakeTokens(); !allowed {
+		//load the ip
+		ip := c.ClientIP()
+		// look up ip in the map
+		value, ok := bucketPerIp.Load(ip)
+		var bucket *TokenBucket
+		if ok {
+			bucket = value.(*TokenBucket)
+		} else {
+			bucket = NewTokenBucket(10, 1, time.Second)
+			bucketPerIp.Store(ip, bucket)
+		}
+		if allowed := bucket.TakeTokens(); !allowed {
 			// if no tokens are available, we return 429 status code
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error": "Too many requests. Please try again later.",
 			})
 			return
 		}
+		c.Next()
 	}
 }
 
