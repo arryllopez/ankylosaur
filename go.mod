@@ -1,4 +1,4 @@
-module gin-quickstart
+module github.com/arryllopez/ankyloGo
 
 go 1.25.6
 
