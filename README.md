@@ -1,8 +1,9 @@
 # ankyloGo
 
-Abuse-aware rate limiting middleware for [Gin](https://gin-gonic.com). Not just a rate limiter — it watches how traffic behaves and adapts.
+ankyloGo is the first installment of the Ankylo series of rate limiters.AnkyloGo currently operates within the Gin framework in the go language. These rate limiters are abuse aware and watch how traffic behaves and adjusts instead of enforcing static rules. 
+I plan to incorporate more frameworks in different languages.
 
-Traditional rate limiters treat all requests equally. ankyloGo applies context: a failed login costs more than a successful search, a sudden geo jump raises suspicion, and limits tighten automatically when behavior looks automated.
+Getting started with ankyloGo
 
 ```go
 import "github.com/arryllopez/ankylosaur/ankylogo"
@@ -37,11 +38,9 @@ At its core, the token bucket algorithm looks like:
 <img width="1069" height="610" alt="image" src="https://github.com/user-attachments/assets/6c174ee5-b826-475e-ab60-16f3d8ea0b6c" />
 
 The sliding window algorithm looks like this: 
-<img width="846" height="349" alt="image" src="https://github.com/user-attachments/assets/2d8bf29e-fa44-4cfd-b249-a8c4e92da779" />
+<img width="1400" height="604" alt="image" src="https://github.com/user-attachments/assets/cb1f7568-80d4-42d4-8f77-61b445072eac" />
 
-
-
-
+The sliding window log uses O(n) memory per user where n is the number of requests within the window
 
 ## Rate Limiting
 
