@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/list"
 	"fmt"
 	"net/http"
 	"sync"
@@ -32,7 +33,6 @@ func NewTokenBucket(capacity, tokensPerInterval int, refillRate time.Duration) *
 }
 
 func (tb *TokenBucket) refillTokens(tokensPerInterval int) {
-	// https://gobyexample.com/tickers
 	ticker := time.NewTicker(tb.refillRate)
 	defer ticker.Stop()
 
@@ -67,25 +67,102 @@ func (tb *TokenBucket) StopRefiller() {
 	close(tb.stopRefiller)
 }
 
-// RateLimiter middleware using token bucket algorithm.
-// Capacity 10, refills 1 token per second.
-func RateLimiter() gin.HandlerFunc {
-	tb := NewTokenBucket(10, 1, time.Second)
+// SlidingWindowLimiter implements the sliding window log algorithm.
+// Tracks individual request timestamps in a deque and rejects
+// requests when the count within the window exceeds the limit.
+type RateLimiter interface {
+	Allow() bool
+}
+
+var _ RateLimiter = (*SlidingWindowLimiter)(nil)
+
+type SlidingWindowLimiter struct {
+	window int64
+	limit  int
+	logs   *list.List
+	mutex  sync.Mutex
+}
+
+func NewSlidingWindowLimiter(window int64, limit int) *SlidingWindowLimiter {
+	return &SlidingWindowLimiter{
+		window: window,
+		limit:  limit,
+		logs:   list.New(),
+	}
+}
+
+func (sw *SlidingWindowLimiter) Allow() bool {
+	sw.mutex.Lock()
+	defer sw.mutex.Unlock()
+
+	now := time.Now()
+	delta := now.Unix() - sw.window
+	edgeTime := time.Unix(delta, 0)
+
+	for sw.logs.Len() > 0 {
+		front := sw.logs.Front()
+		if front.Value.(time.Time).Before(edgeTime) {
+			sw.logs.Remove(front)
+		} else {
+			break
+		}
+	}
+
+	if sw.logs.Len() < sw.limit {
+		sw.logs.PushBack(now)
+		return true
+	}
+
+	return false
+}
+
+// RateLimiterMiddleware applies per-IP rate limiting using both
+// a sliding window (sustained rate) and token bucket (burst control).
+func RateLimiterMiddleware() gin.HandlerFunc {
+	var bucketPerIp sync.Map
+	var slidingWindowPerIp sync.Map
 
 	return func(c *gin.Context) {
-		if allowed := tb.TakeTokens(); !allowed {
+		ip := c.ClientIP()
+
+		value, okBucket := bucketPerIp.Load(ip)
+		window, okWindow := slidingWindowPerIp.Load(ip)
+
+		var slidingWindow *SlidingWindowLimiter
+		if okWindow {
+			slidingWindow = window.(*SlidingWindowLimiter)
+		} else {
+			slidingWindow = NewSlidingWindowLimiter(60, 100)
+			slidingWindowPerIp.Store(ip, slidingWindow)
+		}
+		if allowed := slidingWindow.Allow(); !allowed {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error": "Too many requests. Please try again later.",
 			})
 			return
 		}
+
+		var bucket *TokenBucket
+		if okBucket {
+			bucket = value.(*TokenBucket)
+		} else {
+			bucket = NewTokenBucket(10, 1, time.Second)
+			bucketPerIp.Store(ip, bucket)
+		}
+		if allowed := bucket.TakeTokens(); !allowed {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error": "Too many requests. Please try again later.",
+			})
+			return
+		}
+
 		c.Next()
 	}
 }
 
 func main() {
 	router := gin.Default()
-	router.Use(RateLimiter())
+	router.Use(RateLimiterMiddleware())
 
 	router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
