@@ -1,6 +1,7 @@
 # ankyloGo
 
-ankyloGo is the first installment of the Ankylo series of rate limiters. These rate limiters are abuse aware and watch how traffic behaves and adjusts instead of enforcing static rules. 
+ankyloGo is the first installment of the Ankylo series of rate limiters.AnkyloGo currently operates within the Gin framework in the go language. These rate limiters are abuse aware and watch how traffic behaves and adjusts instead of enforcing static rules. 
+I plan to incorporate more frameworks in different languages.
 
 Getting started with ankyloGo
 
