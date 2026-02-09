@@ -1,13 +1,7 @@
+
 <p align="center">
-  <img
-    src="https://github.com/user-attachments/assets/3b9834ad-6874-441a-9e92-5d06454fa4c1"
-    width="500"
-    height="500"
-    alt="image"
-  />
+<img width="500" height="500" alt="d96bebf9-b1f8-4c67-bb2c-00e715141de4-removebg-preview" src="https://github.com/user-attachments/assets/36a7c8bb-7b81-422f-8f0b-9762830c33c1" />
 </p>
-
-
 
 # ankyloGo
 
