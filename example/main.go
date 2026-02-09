@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/arryllopez/ankyloGo"
+	ankylogo "github.com/arryllopez/ankyloGo"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	router := gin.Default()
-	router.Use(ankylogo.RateLimiterMiddleware()) // applying the middleware
+	memoryStore := ankylogo.NewMemoryStore()
+	router.Use(ankylogo.RateLimiterMiddleware(memoryStore)) // applying the middleware
 
 	// LoggerWithFormatter middleware will write the logs to gin.DefaultWriter
 	// By default gin.DefaultWriter = os.Stdout
