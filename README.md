@@ -1,4 +1,12 @@
-<img width="500" height="500" alt="image" className = "items-center"  src="https://github.com/user-attachments/assets/3b9834ad-6874-441a-9e92-5d06454fa4c1" />
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/3b9834ad-6874-441a-9e92-5d06454fa4c1"
+    width="500"
+    height="500"
+    alt="image"
+  />
+</p>
+
 
 
 # ankyloGo
