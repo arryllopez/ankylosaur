@@ -1,6 +1,6 @@
 
 <p align="center">
-<img width="500" height="500" alt="d96bebf9-b1f8-4c67-bb2c-00e715141de4-removebg-preview" src="https://github.com/user-attachments/assets/36a7c8bb-7b81-422f-8f0b-9762830c33c1" />
+<img width="200" height="200" alt="d96bebf9-b1f8-4c67-bb2c-00e715141de4-removebg-preview" src="https://github.com/user-attachments/assets/36a7c8bb-7b81-422f-8f0b-9762830c33c1" />
 </p>
 
 # ankyloGo
