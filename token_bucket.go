@@ -17,6 +17,7 @@ type TokenBucket struct {
 func NewTokenBucket(capacity, tokensPerInterval int, refillRate time.Duration) *TokenBucket {
 	tb := &TokenBucket{
 		capacity:     capacity,
+		tokens:       capacity,
 		refillRate:   refillRate,
 		stopRefiller: make(chan struct{}),
 	}
