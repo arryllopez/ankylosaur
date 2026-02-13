@@ -13,7 +13,8 @@ import (
 func main() {
 	router := gin.Default()
 	memoryStore := ankylogo.NewMemoryStore()
-	router.Use(ankylogo.RateLimiterMiddleware(memoryStore)) // applying the middleware
+	ankyConfig := ankylogo.DefaultConfig()
+	router.Use(ankylogo.RateLimiterMiddleware(memoryStore, ankyConfig)) // applying the middleware
 
 	// LoggerWithFormatter middleware will write the logs to gin.DefaultWriter
 	// By default gin.DefaultWriter = os.Stdout
