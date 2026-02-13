@@ -10,8 +10,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Example using in-memory rate limiting (MemoryStore)
+// For Redis-based rate limiting (distributed), see redis/main.go
+
 func main() {
 	router := gin.Default()
+
+	// Using MemoryStore - stores rate limit data in application memory
+	// Good for single-server deployments, data is lost on restart
 	memoryStore := ankylogo.NewMemoryStore()
 	ankyConfig := ankylogo.DefaultConfig()
 	router.Use(ankylogo.RateLimiterMiddleware(memoryStore, ankyConfig)) // applying the middleware

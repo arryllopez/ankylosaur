@@ -10,8 +10,8 @@ import (
 // Lua script for sliding window rate limiting using a sorted set.
 var slidingWindowScript = `
 -- KEYS[1] = the Redis key (e.g. "sliding:192.168.1.1")
--- ARGV[1] = now (current unix timestamp)
--- ARGV[2] = cutoff (now - window, anything older gets removed)
+-- ARGV[1] = now (current unix timestamp in nanoseconds for uniqueness)
+-- ARGV[2] = cutoff (now - window in nanoseconds, anything older gets removed)
 -- ARGV[3] = limit (max requests allowed in the window)
 -- ARGV[4] = window (TTL in seconds so the key doesn't live forever)
 local key = KEYS[1]
@@ -93,11 +93,11 @@ func NewRedisStore(client *redis.Client) *RedisStore {
 
 func (r *RedisStore) AllowedSlidingWindow(ip string, window int64, limit int) bool {
 	ctx := context.Background()
-	now := time.Now().Unix()
-	cutoff := now - window
+	// Use UnixNano for uniqueness - each request gets a unique timestamp
+	now := time.Now().UnixNano()
+	cutoff := now - (window * 1e9) // Convert window (seconds) to nanoseconds
 	key := "sliding:" + ip
 
-	//.eval(ctx, slidingWindowScript, []string{key}, ARGV[1], ARGV[2], ARGV[3], ARGV[4])
 	result, err := r.redisConnect.Eval(ctx, slidingWindowScript, []string{key}, now, cutoff, limit, window).Int64()
 	if err != nil {
 		// if Redis fails, fail open (allow the request)
