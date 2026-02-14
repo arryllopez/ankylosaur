@@ -15,6 +15,8 @@ type Config struct {
 	Capacity          int
 	TokensPerInterval int
 	RefillRate        time.Duration
+	// kafka
+	EventPublisher EventPublisher
 }
 
 func DefaultConfig() Config {
@@ -54,6 +56,15 @@ func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolici
 		var allowedWindow bool = store.AllowedSlidingWindow(ip, activeConfig.Window, activeConfig.Limit)
 
 		if !allowedWindow {
+			if config.EventPublisher != nil {
+				config.EventPublisher.Publish(RateLimitEvent{
+					IP:        ip,
+					Endpoint:  key,
+					Action:    "DENIED_WINDOW",
+					Timestamp: time.Now().UnixNano(),
+				})
+			}
+
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error": "Too many requests. Please try again later.",
 			})
@@ -63,6 +74,15 @@ func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolici
 		var allowedBucket bool = store.AllowedTokenBucket(ip, activeConfig.Capacity, activeConfig.TokensPerInterval, activeConfig.RefillRate)
 
 		if !allowedBucket {
+			if config.EventPublisher != nil {
+				config.EventPublisher.Publish(RateLimitEvent{
+					IP:        ip,
+					Endpoint:  key,
+					Action:    "DENIED_BUCKET",
+					Timestamp: time.Now().UnixNano(),
+				})
+			}
+
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error": "Too many requests. Please try again later.",
 			})

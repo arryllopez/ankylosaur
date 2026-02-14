@@ -8,6 +8,7 @@ import (
 
 	ankylogo "github.com/arryllopez/ankyloGo"
 	"github.com/gin-gonic/gin"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 // Example using in-memory rate limiting (MemoryStore)
@@ -20,6 +21,15 @@ func main() {
 	// Good for single-server deployments, data is lost on restart
 	memoryStore := ankylogo.NewMemoryStore()
 	ankyConfig := ankylogo.DefaultConfig()
+
+	// Kafka event publisher - publishes rate limit events to Kafka
+	kafkaClient, err := kgo.NewClient(kgo.SeedBrokers("localhost:9092"))
+	if err != nil {
+		log.Fatalf("failed to create kafka client: %v", err)
+	}
+	defer kafkaClient.Close()
+	ankyConfig.EventPublisher = ankylogo.NewKafkaPublisher(kafkaClient, "rate-limit-events")
+
 	router.Use(ankylogo.RateLimiterMiddleware(memoryStore, ankyConfig)) // applying the middleware
 
 	// LoggerWithFormatter middleware will write the logs to gin.DefaultWriter
