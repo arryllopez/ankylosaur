@@ -55,10 +55,19 @@ func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolici
 			}
 		}
 
+		// Build the store key: include endpoint when per-endpoint policies are active
+		// so different endpoints get separate rate limit counters
+		storeKey := ip
+		if policies != nil {
+			if _, exists := policies[key]; exists {
+				storeKey = ip + ":" + key
+			}
+		}
+
 		// Then use activeConfig instead of config for the rate limit checks
 
 		if activeConfig.Window > 0 && activeConfig.Limit > 0 {
-			var allowedWindow bool = store.AllowedSlidingWindow(ip, activeConfig.Window, activeConfig.Limit)
+			var allowedWindow bool = store.AllowedSlidingWindow(storeKey, activeConfig.Window, activeConfig.Limit)
 
 			if !allowedWindow {
 				if config.EventPublisher != nil {
@@ -78,7 +87,7 @@ func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolici
 		}
 
 		if activeConfig.Capacity > 0 {
-			var allowedBucket bool = store.AllowedTokenBucket(ip, activeConfig.Capacity, activeConfig.TokensPerInterval, activeConfig.RefillRate)
+			var allowedBucket bool = store.AllowedTokenBucket(storeKey, activeConfig.Capacity, activeConfig.TokensPerInterval, activeConfig.RefillRate)
 
 			if !allowedBucket {
 				if config.EventPublisher != nil {

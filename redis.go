@@ -2,6 +2,8 @@ package ankylogo
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -10,22 +12,24 @@ import (
 // Lua script for sliding window rate limiting using a sorted set.
 var slidingWindowScript = `
 -- KEYS[1] = the Redis key (e.g. "sliding:192.168.1.1")
--- ARGV[1] = now (current unix timestamp in nanoseconds for uniqueness)
+-- ARGV[1] = now (current unix timestamp in nanoseconds, used as score)
 -- ARGV[2] = cutoff (now - window in nanoseconds, anything older gets removed)
 -- ARGV[3] = limit (max requests allowed in the window)
 -- ARGV[4] = window (TTL in seconds so the key doesn't live forever)
+-- ARGV[5] = unique member ID (prevents collisions when timestamps are identical)
 local key = KEYS[1]
 local now = tonumber(ARGV[1])
 local cutoff = tonumber(ARGV[2])
 local limit = tonumber(ARGV[3])
 local window = tonumber(ARGV[4])
+local member = ARGV[5]
 
 redis.call('ZREMRANGEBYSCORE', key, 0, cutoff)
 
 local count = redis.call('ZCARD', key)
 
 if count < limit then
-    redis.call('ZADD', key, now, now)
+    redis.call('ZADD', key, now, member)
     redis.call('EXPIRE', key, window)
     return 1
 else
@@ -93,12 +97,16 @@ func NewRedisStore(client *redis.Client) *RedisStore {
 
 func (r *RedisStore) AllowedSlidingWindow(ip string, window int64, limit int) bool {
 	ctx := context.Background()
-	// Use UnixNano for uniqueness - each request gets a unique timestamp
 	now := time.Now().UnixNano()
 	cutoff := now - (window * 1e9) // Convert window (seconds) to nanoseconds
 	key := "sliding:" + ip
 
-	result, err := r.redisConnect.Eval(ctx, slidingWindowScript, []string{key}, now, cutoff, limit, window).Int64()
+	// Generate a unique member ID to avoid collisions when timestamps are identical
+	randBytes := make([]byte, 8)
+	rand.Read(randBytes)
+	member := hex.EncodeToString(randBytes)
+
+	result, err := r.redisConnect.Eval(ctx, slidingWindowScript, []string{key}, now, cutoff, limit, window, member).Int64()
 	if err != nil {
 		// if Redis fails, fail open (allow the request)
 		return true

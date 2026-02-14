@@ -7,48 +7,21 @@ import (
 
 // The following code block implements the Token Bucket Algoritm
 type TokenBucket struct {
-	tokens       int
-	capacity     int
-	refillRate   time.Duration
-	stopRefiller chan struct{} //signal to stop refilling
-	mu           sync.Mutex    // handling race conditions (two processes trying to access tokens simultaneously)
+	tokens            int
+	capacity          int
+	tokensPerInterval int
+	refillRate        time.Duration
+	lastRefill        time.Time
+	mu                sync.Mutex // handling race conditions (two processes trying to access tokens simultaneously)
 }
 
 func NewTokenBucket(capacity, tokensPerInterval int, refillRate time.Duration) *TokenBucket {
-	tb := &TokenBucket{
-		capacity:     capacity,
-		tokens:       capacity,
-		refillRate:   refillRate,
-		stopRefiller: make(chan struct{}),
-	}
-	go tb.refillTokens(tokensPerInterval) // start with a full bucket
-	return tb
-}
-
-func (tb *TokenBucket) refillTokens(tokensPerInterval int) {
-	// ticker is a great way to do something repeatedly to know more
-	ticker := time.NewTicker(tb.refillRate)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			// handle race conditions
-			tb.mu.Lock()
-			if tb.tokens+tokensPerInterval <= tb.capacity {
-				// if we won't exceed the capacity add tokensPerInterval
-				// tokens into our bucket
-				tb.tokens += tokensPerInterval
-			} else {
-				// as we cant add more than capacity tokens, set
-				// current tokens to bucket's capacity
-				tb.tokens = tb.capacity
-			}
-			tb.mu.Unlock()
-		case <-tb.stopRefiller:
-			// let's stop refilling
-			return
-		}
+	return &TokenBucket{
+		capacity:          capacity,
+		tokens:            capacity,
+		tokensPerInterval: tokensPerInterval,
+		refillRate:        refillRate,
+		lastRefill:        time.Now(),
 	}
 }
 
@@ -56,6 +29,23 @@ func (tb *TokenBucket) TakeTokens() bool {
 	// handle race conditions
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
+
+	// calculate how many tokens to refill based on elapsed time
+	now := time.Now()
+	elapsed := now.Sub(tb.lastRefill)
+
+	if tb.refillRate > 0 && tb.tokensPerInterval > 0 {
+		// how many refill intervals have passed since the last refill
+		intervals := int(elapsed / tb.refillRate)
+		if intervals > 0 {
+			tb.tokens += intervals * tb.tokensPerInterval
+			// cap tokens at capacity
+			if tb.tokens > tb.capacity {
+				tb.tokens = tb.capacity
+			}
+			tb.lastRefill = now
+		}
+	}
 
 	// if there are tokens available in the bucket, we take one out
 	// in this case request goes through, thus we return true.
@@ -66,9 +56,4 @@ func (tb *TokenBucket) TakeTokens() bool {
 	// in the case where tokens are unavailable, this request won't
 	// go through, so we return false
 	return false
-}
-
-func (tb *TokenBucket) StopRefiller() {
-	// close the channel
-	close(tb.stopRefiller)
 }

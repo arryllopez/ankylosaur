@@ -174,8 +174,9 @@ func TestRedisLimitSlidingWindow(t *testing.T) {
 	var limit int = 3
 	var status bool
 
-	// Cleanup any existing data before test
+	// Cleanup any existing data before test and wait for it to take effect
 	client.Del(ctx, "sliding:"+ip)
+	time.Sleep(100 * time.Millisecond)
 
 	// First 3 requests should succeed
 	for i := 0; i < 3; i++ {
