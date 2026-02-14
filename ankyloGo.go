@@ -1,6 +1,7 @@
 package ankylogo
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -32,6 +33,9 @@ func DefaultConfig() Config {
 // RateLimiterMiddleware returns a gin middleware that rate limits per IP
 // using both a sliding window and a token bucket.
 func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolicies ...map[string]Config) gin.HandlerFunc {
+	if config.Window == 0 && config.Limit == 0 && config.Capacity == 0 {
+		log.Println("warning: no rate limiting configured, all requests will pass through")
+	}
 
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
@@ -53,40 +57,44 @@ func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolici
 
 		// Then use activeConfig instead of config for the rate limit checks
 
-		var allowedWindow bool = store.AllowedSlidingWindow(ip, activeConfig.Window, activeConfig.Limit)
+		if activeConfig.Window > 0 && activeConfig.Limit > 0 {
+			var allowedWindow bool = store.AllowedSlidingWindow(ip, activeConfig.Window, activeConfig.Limit)
 
-		if !allowedWindow {
-			if config.EventPublisher != nil {
-				config.EventPublisher.Publish(RateLimitEvent{
-					IP:        ip,
-					Endpoint:  key,
-					Action:    "DENIED_WINDOW",
-					Timestamp: time.Now().UnixNano(),
+			if !allowedWindow {
+				if config.EventPublisher != nil {
+					config.EventPublisher.Publish(RateLimitEvent{
+						IP:        ip,
+						Endpoint:  key,
+						Action:    "DENIED_WINDOW",
+						Timestamp: time.Now().UnixNano(),
+					})
+				}
+
+				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+					"error": "Too many requests. Please try again later.",
 				})
+				return
 			}
-
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"error": "Too many requests. Please try again later.",
-			})
-			return
 		}
 
-		var allowedBucket bool = store.AllowedTokenBucket(ip, activeConfig.Capacity, activeConfig.TokensPerInterval, activeConfig.RefillRate)
+		if activeConfig.Capacity > 0 {
+			var allowedBucket bool = store.AllowedTokenBucket(ip, activeConfig.Capacity, activeConfig.TokensPerInterval, activeConfig.RefillRate)
 
-		if !allowedBucket {
-			if config.EventPublisher != nil {
-				config.EventPublisher.Publish(RateLimitEvent{
-					IP:        ip,
-					Endpoint:  key,
-					Action:    "DENIED_BUCKET",
-					Timestamp: time.Now().UnixNano(),
+			if !allowedBucket {
+				if config.EventPublisher != nil {
+					config.EventPublisher.Publish(RateLimitEvent{
+						IP:        ip,
+						Endpoint:  key,
+						Action:    "DENIED_BUCKET",
+						Timestamp: time.Now().UnixNano(),
+					})
+				}
+
+				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+					"error": "Too many requests. Please try again later.",
 				})
+				return
 			}
-
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"error": "Too many requests. Please try again later.",
-			})
-			return
 		}
 
 		c.Next()
