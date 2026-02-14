@@ -8,6 +8,7 @@ import (
 	ankylogo "github.com/arryllopez/ankyloGo"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 // EXAMPLE USING REDIS
@@ -48,6 +49,14 @@ func main() {
 
 	// Create Gin router
 	router := gin.Default()
+
+	// Kafka event publisher - publishes rate limit events to Kafka
+	kafkaClient, err := kgo.NewClient(kgo.SeedBrokers("localhost:9092"))
+	if err != nil {
+		log.Fatalf("failed to create kafka client: %v", err)
+	}
+	defer kafkaClient.Close()
+	config.EventPublisher = ankylogo.NewKafkaPublisher(kafkaClient, "rate-limit-events")
 
 	// Apply rate limiter middleware with Redis
 	// This will rate limit by client IP using both sliding window and token bucket
