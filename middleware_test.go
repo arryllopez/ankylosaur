@@ -236,3 +236,36 @@ func TestMiddlewareRiskZeroScore(t *testing.T) {
 		t.Errorf("With zero risk score, should allow 3 requests (full capacity), allowed %d", passCount)
 	}
 }
+
+/*
+Testing that risk reduction does not re-enable a disabled token bucket
+User sets Capacity=0 (token bucket disabled), only sliding window active
+Risk score should reduce the sliding window limit but NOT activate token bucket
+*/
+func TestMiddlewareRiskDoesNotEnableDisabledAlgorithm(t *testing.T) {
+	config := Config{
+		Window: 60,
+		Limit:  10,
+		// Capacity is 0 — token bucket intentionally disabled
+		ScoreReader: &mockScoreReader{
+			scores: map[string]int64{"": 5},
+		},
+		DenyScore: 10,
+	}
+	router := setupTestRouter(config)
+
+	// factor = 1.0 - 5/10 = 0.5, so Limit 10 * 0.5 = 5
+	// Capacity should stay 0 (disabled), not get floored to 1
+	passCount := 0
+	for i := 0; i < 10; i++ {
+		w := makeRequest(router)
+		if w.Code == http.StatusOK {
+			passCount++
+		}
+	}
+
+	// Should allow exactly 5 requests (sliding window only, reduced by risk)
+	if passCount != 5 {
+		t.Errorf("With Capacity=0 and risk score, should allow 5 requests (sliding window only), allowed %d", passCount)
+	}
+}

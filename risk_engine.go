@@ -13,6 +13,7 @@ import (
 type RiskScore struct {
 	score       int64
 	lastUpdated time.Time
+	notified    bool
 	mu          sync.Mutex
 }
 
@@ -55,10 +56,13 @@ func (r *RiskEngine) GetScore(ip string) int64 {
 	riskScore := val.(*RiskScore)
 	riskScore.mu.Lock()
 	defer riskScore.mu.Unlock()
-	now := time.Now()
-	elapsed := now.Sub(riskScore.lastUpdated)
-	intervals := int64(elapsed / r.decayRate)
-	current := riskScore.score - intervals
+	current := riskScore.score
+	if r.decayRate > 0 {
+		now := time.Now()
+		elapsed := now.Sub(riskScore.lastUpdated)
+		intervals := int64(elapsed / r.decayRate)
+		current -= intervals
+	}
 	if current < 0 {
 		current = 0
 	}
@@ -70,24 +74,36 @@ func (r *RiskEngine) GetScore(ip string) int64 {
 // is in place, so for example if interval was 30 minutes then if no failed api calls happen within 2 hours
 // the specific ip's risk score gets deducted by 4 points since there are 120 minutes in 2 hours and
 // 120 / 30 =  4
-func (r *RiskEngine) processEvent(event RateLimitEvent) int64 {
+func (r *RiskEngine) processEvent(event RateLimitEvent) (int64, bool) {
 	// bump the score for the ip for each denied event
 	newScore := &RiskScore{lastUpdated: time.Now()}
 	score, _ := r.ipScores.LoadOrStore(event.IP, newScore)
 	riskScore := score.(*RiskScore)
 	riskScore.mu.Lock()
 	now := time.Now()
-	elapsed := now.Sub(riskScore.lastUpdated)
-	intervals := int64(elapsed / r.decayRate)
-	riskScore.score -= intervals
+	if r.decayRate > 0 {
+		elapsed := now.Sub(riskScore.lastUpdated)
+		intervals := int64(elapsed / r.decayRate)
+		riskScore.score -= intervals
+	}
 	if riskScore.score < 0 {
 		riskScore.score = 0
+	}
+	// re-arm notification if score decayed back to or below threshold
+	if riskScore.score <= r.threshold {
+		riskScore.notified = false
 	}
 	riskScore.score += 1
 	riskScore.lastUpdated = now
 	currentScore := riskScore.score
+	// only signal notification on the first crossing
+	shouldNotify := false
+	if currentScore > r.threshold && !riskScore.notified {
+		riskScore.notified = true
+		shouldNotify = true
+	}
 	riskScore.mu.Unlock()
-	return currentScore
+	return currentScore, shouldNotify
 }
 
 func (r *RiskEngine) EventReader(ctx context.Context) {
@@ -114,10 +130,9 @@ func (r *RiskEngine) EventReader(ctx context.Context) {
 			if err != nil {
 				return
 			}
-			currentScore := r.processEvent(event)
+			currentScore, shouldNotify := r.processEvent(event)
 
-			// check if current score is above the threshold
-			if currentScore > r.threshold && r.OnThreshold != nil {
+			if shouldNotify && r.OnThreshold != nil {
 				r.OnThreshold.Notify(event.IP, currentScore)
 			}
 		})

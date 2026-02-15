@@ -88,13 +88,19 @@ func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolici
 				if factor < 0.1 {
 					factor = 0.1
 				}
-				activeConfig.Limit = int(float64(activeConfig.Limit) * factor)
-				activeConfig.Capacity = int(float64(activeConfig.Capacity) * factor)
-				if activeConfig.Limit < 1 {
-					activeConfig.Limit = 1
+				// Only reduce limits that were originally configured (> 0)
+				// to avoid re-enabling algorithms the user intentionally disabled
+				if activeConfig.Limit > 0 {
+					activeConfig.Limit = int(float64(activeConfig.Limit) * factor)
+					if activeConfig.Limit < 1 {
+						activeConfig.Limit = 1
+					}
 				}
-				if activeConfig.Capacity < 1 {
-					activeConfig.Capacity = 1
+				if activeConfig.Capacity > 0 {
+					activeConfig.Capacity = int(float64(activeConfig.Capacity) * factor)
+					if activeConfig.Capacity < 1 {
+						activeConfig.Capacity = 1
+					}
 				}
 			}
 		}

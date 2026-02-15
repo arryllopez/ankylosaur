@@ -22,7 +22,7 @@ func TestRiskScoreFirstEvent(t *testing.T) {
 		Timestamp: time.Now().UnixNano(),
 	}
 
-	score := engine.processEvent(event)
+	score, _ := engine.processEvent(event)
 	if score != 1 {
 		t.Errorf("First event should set score to 1, got %d", score)
 	}
@@ -47,7 +47,7 @@ func TestRiskScoreMultipleEvents(t *testing.T) {
 
 	var lastScore int64
 	for i := 0; i < 5; i++ {
-		lastScore = engine.processEvent(event)
+		lastScore, _ = engine.processEvent(event)
 	}
 
 	if lastScore != 5 {
@@ -74,13 +74,13 @@ func TestRiskScoreIsolatedIPs(t *testing.T) {
 	}
 
 	// 1 event for IP B — should be 1, not 4
-	scoreB := engine.processEvent(eventB)
+	scoreB, _ := engine.processEvent(eventB)
 	if scoreB != 1 {
 		t.Errorf("IP B should have score 1 (isolated from A), got %d", scoreB)
 	}
 
 	// IP A should now be 4 (3 previous + 1 new)
-	scoreA := engine.processEvent(eventA)
+	scoreA, _ := engine.processEvent(eventA)
 	if scoreA != 4 {
 		t.Errorf("IP A should have score 4 after 4th event, got %d", scoreA)
 	}
@@ -108,7 +108,7 @@ func TestRiskScoreDecay(t *testing.T) {
 	time.Sleep(350 * time.Millisecond)
 
 	// Score was 5, decay 3, +1 = 3
-	score := engine.processEvent(event)
+	score, _ := engine.processEvent(event)
 	if score != 3 {
 		t.Errorf("After 3 decay intervals, score should be 5-3+1=3, got %d", score)
 	}
@@ -135,7 +135,7 @@ func TestRiskScoreDecayFloor(t *testing.T) {
 	time.Sleep(600 * time.Millisecond)
 
 	// Score was 2, decay 6, floors at 0, +1 = 1
-	score := engine.processEvent(event)
+	score, _ := engine.processEvent(event)
 	if score != 1 {
 		t.Errorf("After excessive decay, score should floor at 0 then +1 = 1, got %d", score)
 	}
@@ -156,14 +156,14 @@ func TestRiskScoreThresholdCrossing(t *testing.T) {
 
 	// First 3 events should not exceed threshold
 	for i := 0; i < 3; i++ {
-		score := engine.processEvent(event)
+		score, _ := engine.processEvent(event)
 		if score > engine.threshold {
 			t.Errorf("Event %d should not exceed threshold of 3, score is %d", i+1, score)
 		}
 	}
 
 	// 4th event should exceed threshold
-	score := engine.processEvent(event)
+	score, _ := engine.processEvent(event)
 	if score <= engine.threshold {
 		t.Errorf("4th event should exceed threshold of 3, score is %d", score)
 	}
@@ -267,20 +267,20 @@ func TestRiskScoreThresholdNotifier(t *testing.T) {
 
 	event := RateLimitEvent{IP: "192.168.1.50", Endpoint: "POST /login", Action: "DENIED_WINDOW", Timestamp: time.Now().UnixNano()}
 
-	// First 3 events — should NOT trigger notifier (scores 1, 2, 3 which are <= threshold)
+	// First 3 events — shouldNotify must be false (scores 1, 2, 3 which are <= threshold)
 	for i := 0; i < 3; i++ {
-		engine.processEvent(event)
-	}
-	// processEvent only returns the score, the notification happens in EventReader
-	// So we simulate what EventReader does: check score > threshold and call notifier
-	// Let's test GetScore instead to verify the score is correct
-	if engine.GetScore("192.168.1.50") != 3 {
-		t.Errorf("Score should be 3 after 3 events, got %d", engine.GetScore("192.168.1.50"))
+		_, shouldNotify := engine.processEvent(event)
+		if shouldNotify {
+			t.Errorf("Event %d should not trigger notification (score <= threshold)", i+1)
+		}
 	}
 
-	// 4th event pushes score to 4, which exceeds threshold of 3
-	currentScore := engine.processEvent(event)
-	if currentScore > engine.threshold && engine.OnThreshold != nil {
+	// 4th event pushes score to 4, which exceeds threshold of 3 — first crossing
+	currentScore, shouldNotify := engine.processEvent(event)
+	if !shouldNotify {
+		t.Errorf("4th event should trigger notification (first threshold crossing)")
+	}
+	if shouldNotify {
 		engine.OnThreshold.Notify(event.IP, currentScore)
 	}
 
@@ -292,5 +292,46 @@ func TestRiskScoreThresholdNotifier(t *testing.T) {
 	}
 	if notifier.calledScore != 4 {
 		t.Errorf("Notifier should have been called with score 4, got %d", notifier.calledScore)
+	}
+
+	// 5th and 6th events — shouldNotify must be false (already notified, no re-arm)
+	for i := 5; i <= 6; i++ {
+		_, shouldNotify := engine.processEvent(event)
+		if shouldNotify {
+			t.Errorf("Event %d should NOT trigger notification (already notified)", i)
+		}
+	}
+
+	if notifier.callCount != 1 {
+		t.Errorf("Notifier should still have been called only once after repeated events, called %d times", notifier.callCount)
+	}
+}
+
+/*
+Test that decayRate of 0 does not panic and scores accumulate without decay
+With no decay configured, score should just keep going up
+*/
+func TestRiskScoreZeroDecayRate(t *testing.T) {
+	engine := &RiskEngine{
+		threshold: 10,
+		decayRate: 0,
+	}
+
+	event := RateLimitEvent{IP: "10.0.0.50", Endpoint: "GET /ping", Action: "DENIED_WINDOW", Timestamp: time.Now().UnixNano()}
+
+	// 5 events should accumulate to 5 with no decay
+	var lastScore int64
+	for i := 0; i < 5; i++ {
+		lastScore, _ = engine.processEvent(event)
+	}
+
+	if lastScore != 5 {
+		t.Errorf("With zero decayRate, 5 events should give score 5, got %d", lastScore)
+	}
+
+	// GetScore should also return 5 without panicking
+	score := engine.GetScore("10.0.0.50")
+	if score != 5 {
+		t.Errorf("GetScore with zero decayRate should return 5, got %d", score)
 	}
 }
