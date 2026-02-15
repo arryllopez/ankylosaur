@@ -16,12 +16,17 @@ type RiskScore struct {
 	mu          sync.Mutex
 }
 
+type ThresholdNotifier interface {
+	Notify(ip string, score int64)
+}
+
 type RiskEngine struct {
-	client    *kgo.Client
-	ipScores  sync.Map
-	threshold int64
-	topic     string
-	decayRate time.Duration
+	client      *kgo.Client
+	ipScores    sync.Map
+	threshold   int64
+	topic       string
+	decayRate   time.Duration
+	OnThreshold ThresholdNotifier
 }
 
 func NewRiskEngine(client *kgo.Client, threshold int64, topic string, decayRate time.Duration) *RiskEngine {
@@ -38,6 +43,26 @@ func NewRiskScore(score int64, lastUpdated time.Time) *RiskScore {
 		score:       score,
 		lastUpdated: lastUpdated,
 	}
+}
+
+// GetScore returns the current effective risk score for an IP,
+// applying time-based decay without modifying stored state
+func (r *RiskEngine) GetScore(ip string) int64 {
+	val, ok := r.ipScores.Load(ip)
+	if !ok {
+		return 0
+	}
+	riskScore := val.(*RiskScore)
+	riskScore.mu.Lock()
+	defer riskScore.mu.Unlock()
+	now := time.Now()
+	elapsed := now.Sub(riskScore.lastUpdated)
+	intervals := int64(elapsed / r.decayRate)
+	current := riskScore.score - intervals
+	if current < 0 {
+		current = 0
+	}
+	return current
 }
 
 // This function takes a the failed events for a specific ip and increments its risk score
@@ -92,8 +117,8 @@ func (r *RiskEngine) EventReader(ctx context.Context) {
 			currentScore := r.processEvent(event)
 
 			// check if current score is above the threshold
-			if currentScore > r.threshold {
-				fmt.Println("ip has exceeded")
+			if currentScore > r.threshold && r.OnThreshold != nil {
+				r.OnThreshold.Notify(event.IP, currentScore)
 			}
 		})
 

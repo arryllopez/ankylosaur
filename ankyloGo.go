@@ -8,6 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ScoreReader returns the current risk score for an IP
+type ScoreReader interface {
+	GetScore(ip string) int64
+}
+
 type Config struct {
 	// sliding wzndow
 	Window int64
@@ -18,6 +23,10 @@ type Config struct {
 	RefillRate        time.Duration
 	// kafka
 	EventPublisher EventPublisher
+	// risk scoring — if ScoreReader is set, the middleware adjusts limits based on risk
+	// DenyScore is the score at which all requests are denied (0 = disabled)
+	ScoreReader ScoreReader
+	DenyScore   int64
 }
 
 func DefaultConfig() Config {
@@ -64,7 +73,31 @@ func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolici
 			}
 		}
 
-		// Then use activeConfig instead of config for the rate limit checks
+		// Dynamic enforcement: adjust limits based on risk score
+		if config.ScoreReader != nil && config.DenyScore > 0 {
+			riskScore := config.ScoreReader.GetScore(ip)
+			if riskScore >= config.DenyScore {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+					"error": "Access temporarily restricted due to suspicious activity.",
+				})
+				return
+			}
+			if riskScore > 0 {
+				// Proportionally reduce limits: higher score = tighter limits
+				factor := 1.0 - (float64(riskScore) / float64(config.DenyScore))
+				if factor < 0.1 {
+					factor = 0.1
+				}
+				activeConfig.Limit = int(float64(activeConfig.Limit) * factor)
+				activeConfig.Capacity = int(float64(activeConfig.Capacity) * factor)
+				if activeConfig.Limit < 1 {
+					activeConfig.Limit = 1
+				}
+				if activeConfig.Capacity < 1 {
+					activeConfig.Capacity = 1
+				}
+			}
+		}
 
 		if activeConfig.Window > 0 && activeConfig.Limit > 0 {
 			var allowedWindow bool = store.AllowedSlidingWindow(storeKey, activeConfig.Window, activeConfig.Limit)

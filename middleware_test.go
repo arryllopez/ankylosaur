@@ -137,3 +137,102 @@ func TestMiddlewareNoRateLimiting(t *testing.T) {
 		}
 	}
 }
+
+// mock ScoreReader for testing enforcement tiers
+type mockScoreReader struct {
+	scores map[string]int64
+}
+
+func (m *mockScoreReader) GetScore(ip string) int64 {
+	if score, ok := m.scores[ip]; ok {
+		return score
+	}
+	return 0
+}
+
+/*
+Testing that an IP with a risk score at or above DenyScore gets 403 Forbidden
+regardless of rate limit capacity. The request should never reach the algorithms.
+*/
+func TestMiddlewareRiskDenyAll(t *testing.T) {
+	config := Config{
+		Window:   60,
+		Limit:    100,
+		Capacity: 100,
+		ScoreReader: &mockScoreReader{
+			// all IPs get score 10 (empty string key since httptest has no RemoteAddr)
+			scores: map[string]int64{"": 10},
+		},
+		DenyScore: 10,
+	}
+	router := setupTestRouter(config)
+
+	// Even the first request should be denied with 403 (not 429)
+	w := makeRequest(router)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Request should return 403 Forbidden when score >= DenyScore, got %d", w.Code)
+	}
+}
+
+/*
+Testing that an IP with a moderate risk score gets reduced limits
+Normal capacity is 10, with score at 50% of DenyScore the capacity should
+be reduced to ~5 (factor 0.5), so the 6th request should be denied
+*/
+func TestMiddlewareRiskReducedLimits(t *testing.T) {
+	config := Config{
+		Capacity:          10,
+		TokensPerInterval: 0,
+		RefillRate:        time.Second,
+		ScoreReader: &mockScoreReader{
+			scores: map[string]int64{"": 5},
+		},
+		DenyScore: 10,
+	}
+	router := setupTestRouter(config)
+
+	// With score 5 out of DenyScore 10, factor = 0.5
+	// Capacity 10 * 0.5 = 5 tokens
+	passCount := 0
+	for i := 0; i < 10; i++ {
+		w := makeRequest(router)
+		if w.Code == http.StatusOK {
+			passCount++
+		}
+	}
+
+	// Should allow exactly 5 requests (capacity 10 * 0.5 factor)
+	if passCount != 5 {
+		t.Errorf("With 50%% risk score, should allow 5 requests, allowed %d", passCount)
+	}
+}
+
+/*
+Testing that an IP with zero risk score gets normal limits (no reduction)
+ScoreReader is set but score is 0 — limits should be unaffected
+*/
+func TestMiddlewareRiskZeroScore(t *testing.T) {
+	config := Config{
+		Capacity:          3,
+		TokensPerInterval: 0,
+		RefillRate:        time.Second,
+		ScoreReader: &mockScoreReader{
+			scores: map[string]int64{"": 0},
+		},
+		DenyScore: 10,
+	}
+	router := setupTestRouter(config)
+
+	// Score is 0, so full capacity of 3 should be available
+	passCount := 0
+	for i := 0; i < 5; i++ {
+		w := makeRequest(router)
+		if w.Code == http.StatusOK {
+			passCount++
+		}
+	}
+
+	if passCount != 3 {
+		t.Errorf("With zero risk score, should allow 3 requests (full capacity), allowed %d", passCount)
+	}
+}
