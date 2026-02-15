@@ -77,6 +77,16 @@ func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolici
 		if config.ScoreReader != nil && config.DenyScore > 0 {
 			riskScore := config.ScoreReader.GetScore(ip)
 			if riskScore >= config.DenyScore {
+				if config.EventPublisher != nil {
+					config.EventPublisher.Publish(RateLimitEvent{
+						IP:         ip,
+						Endpoint:   key,
+						Action:     "DENIED_RISK",
+						Timestamp:  time.Now().UnixNano(),
+						UserAgent:  c.Request.UserAgent(),
+						StatusCode: http.StatusForbidden,
+					})
+				}
 				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 					"error": "Access temporarily restricted due to suspicious activity.",
 				})
@@ -111,10 +121,12 @@ func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolici
 			if !allowedWindow {
 				if config.EventPublisher != nil {
 					config.EventPublisher.Publish(RateLimitEvent{
-						IP:        ip,
-						Endpoint:  key,
-						Action:    "DENIED_WINDOW",
-						Timestamp: time.Now().UnixNano(),
+						IP:         ip,
+						Endpoint:   key,
+						Action:     "DENIED_WINDOW",
+						Timestamp:  time.Now().UnixNano(),
+						UserAgent:  c.Request.UserAgent(),
+						StatusCode: http.StatusTooManyRequests,
 					})
 				}
 
@@ -131,10 +143,12 @@ func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolici
 			if !allowedBucket {
 				if config.EventPublisher != nil {
 					config.EventPublisher.Publish(RateLimitEvent{
-						IP:        ip,
-						Endpoint:  key,
-						Action:    "DENIED_BUCKET",
-						Timestamp: time.Now().UnixNano(),
+						IP:         ip,
+						Endpoint:   key,
+						Action:     "DENIED_BUCKET",
+						Timestamp:  time.Now().UnixNano(),
+						UserAgent:  c.Request.UserAgent(),
+						StatusCode: http.StatusTooManyRequests,
 					})
 				}
 
@@ -146,5 +160,16 @@ func RateLimiterMiddleware(store RateLimiterStore, config Config, endpointPolici
 		}
 
 		c.Next()
+
+		if config.EventPublisher != nil {
+			config.EventPublisher.Publish(RateLimitEvent{
+				IP:         ip,
+				Endpoint:   key,
+				Action:     "ALLOWED",
+				Timestamp:  time.Now().UnixNano(),
+				UserAgent:  c.Request.UserAgent(),
+				StatusCode: c.Writer.Status(),
+			})
+		}
 	}
 }

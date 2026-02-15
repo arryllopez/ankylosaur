@@ -9,10 +9,12 @@ import (
 )
 
 type RateLimitEvent struct {
-	IP        string `json:"ip"`
-	Endpoint  string `json:"endpoint"`
-	Action    string `json:"action"` // "ALLOWED", "DENIED_WINDOW", "DENIED_BUCKET"
-	Timestamp int64  `json:"timestamp"`
+	IP         string `json:"ip"`
+	Endpoint   string `json:"endpoint"`
+	Action     string `json:"action"` // "ALLOWED", "DENIED_WINDOW", "DENIED_BUCKET", "DENIED_RISK"
+	Timestamp  int64  `json:"timestamp"`
+	UserAgent  string `json:"useragent"`
+	StatusCode int    `json:"statuscode"`
 }
 
 type EventPublisher interface {
