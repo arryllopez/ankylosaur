@@ -60,10 +60,7 @@ With Middleware:
   Average: 2.5 ms
 
 Overhead: 2.5 - 2.2 = 0.3 ms
-```
 
-Resume bullet example:
-> "Sustained 40,000+ req/sec under load testing with <1ms overhead"
 
 ## Tuning for different scenarios
 
